@@ -1,4 +1,5 @@
-# Einthusan Stremio Addon
+# Einthusan Stremio Addon 
+# Buy me a Coffee https://buymeacoffee.com/bmk007
 
 > **Coming to Stremio Community Addon Repository soon!**
 
