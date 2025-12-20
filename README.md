@@ -1,5 +1,7 @@
 # Einthusan Stremio Addon
 
+> **Coming to Stremio Community Addon Repository soon!**
+
 A Stremio addon that allows you to stream movies from Einthusan directly in the Stremio media player. Watch South Asian movies (Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Punjabi) seamlessly without leaving Stremio.
 
 **Developed and maintained by bmk007**
@@ -96,29 +98,6 @@ A Stremio addon that allows you to stream movies from Einthusan directly in the 
    ```
    http://YOUR_SERVER_IP:7777/manifest.json
    ```
-
-### Cloud Hosting (Free Options)
-
-#### Render.com
-1. Push code to GitHub
-2. Go to [render.com](https://render.com) and create a new Web Service
-3. Connect your GitHub repository
-4. Configure:
-   - **Build Command**: `npm install`
-   - **Start Command**: `node addon.js`
-5. Deploy and use the provided URL
-
-#### Glitch.com
-1. Go to [glitch.com](https://glitch.com)
-2. Create New Project → Import from GitHub
-3. Paste your repository URL
-4. Your addon will be available at `https://your-project.glitch.me/manifest.json`
-
-#### Railway.app
-1. Go to [railway.app](https://railway.app)
-2. New Project → Deploy from GitHub repo
-3. It will auto-detect Node.js and deploy
-4. Use the provided URL for your addon
 
 ---
 
