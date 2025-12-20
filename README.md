@@ -1,6 +1,8 @@
-# Einthusan Stremio Addon
+# Einthusan Stremio Addon 
+# Buy me a Coffee https://buymeacoffee.com/bmk007
 
 > **Coming to Stremio Community Addon Repository soon!**
+
 
 A Stremio addon that allows you to stream movies from Einthusan directly in the Stremio media player. Watch South Asian movies (Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Punjabi) seamlessly without leaving Stremio.
 
