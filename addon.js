@@ -298,11 +298,31 @@ async function getMovieStreams(movieUrl, cookies) {
     }
 }
 
+// Map OMDB language to Einthusan language code
+function mapLanguageToEinthusan(language) {
+    if (!language) return ''
+    const lang = language.toLowerCase().split(',')[0].trim()  // Take first language if multiple
+    const langMap = {
+        'tamil': 'tamil',
+        'hindi': 'hindi',
+        'telugu': 'telugu',
+        'malayalam': 'malayalam',
+        'kannada': 'kannada',
+        'bengali': 'bengali',
+        'marathi': 'marathi',
+        'punjabi': 'punjabi'
+    }
+    return langMap[lang] || ''  // Return empty string if not found (searches all)
+}
+
 // Search Einthusan for movies by title
-async function searchEinthusan(title, cookies) {
+async function searchEinthusan(title, cookies, language = '') {
     try {
-        // Search across all languages (empty lang parameter)
-        const searchUrl = `https://einthusan.tv/movie/results/?lang=&query=${encodeURIComponent(title)}`
+        // Map language to Einthusan format
+        const langParam = mapLanguageToEinthusan(language)
+        console.log(`Movie language from OMDB: ${language} -> Einthusan lang: ${langParam || 'all'}`)
+
+        const searchUrl = `https://einthusan.tv/movie/results/?lang=${langParam}&query=${encodeURIComponent(title)}`
 
         console.log(`Searching Einthusan: ${searchUrl}`)
 
@@ -498,7 +518,7 @@ builder.defineStreamHandler(async (args) => {
     console.log('Movie Info:', movieInfo)
 
     // Step 4: Search Einthusan for the movie
-    const einthusanMovies = await searchEinthusan(movieInfo.title, cookies)
+    const einthusanMovies = await searchEinthusan(movieInfo.title, cookies, movieInfo.language)
 
     // Create streams for each matching movie
     const streams = []
