@@ -1,0 +1,568 @@
+const { addonBuilder, serveHTTP } = require('stremio-addon-sdk')
+const axios = require('axios')
+const puppeteer = require('puppeteer')
+
+// Store session cookies per user (in memory)
+const sessionCache = new Map()
+
+// Browser instance (reused for performance)
+let browserInstance = null
+
+async function getBrowser() {
+    if (!browserInstance) {
+        browserInstance = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        })
+    }
+    return browserInstance
+}
+
+// Check if user is logged into Einthusan
+async function checkEinthusanLogin(cookies = '') {
+    try {
+        const response = await axios.get('https://einthusan.tv/login/', {
+            maxRedirects: 0,  // Don't follow redirects
+            validateStatus: (status) => status < 400 || status === 307,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Cookie': cookies
+            }
+        })
+
+        // 307 means logged in (redirects away from login page)
+        const isLoggedIn = response.status === 307
+        console.log(`Einthusan login check: ${response.status} - ${isLoggedIn ? 'LOGGED IN' : 'NOT LOGGED IN'}`)
+
+        return { isLoggedIn, status: response.status }
+    } catch (error) {
+        // If error is due to redirect, check the status
+        if (error.response?.status === 307) {
+            console.log('Einthusan login check: 307 - LOGGED IN')
+            return { isLoggedIn: true, status: 307 }
+        }
+        console.error('Einthusan login check error:', error.message)
+        return { isLoggedIn: false, status: error.response?.status || 0 }
+    }
+}
+
+// Login to Einthusan and get session cookies
+async function loginToEinthusan(email, password) {
+    try {
+        // Step 1: Get the login page to get cookies and CSRF token
+        const loginPageResponse = await axios.get('https://einthusan.tv/login/', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9'
+            }
+        })
+
+        // Extract cookies from login page
+        const setCookies = loginPageResponse.headers['set-cookie'] || []
+        const cookieString = setCookies.map(c => c.split(';')[0]).join('; ')
+
+        // Extract data-pageid from HTML (this is the CSRF token)
+        const html = loginPageResponse.data
+        const pageIdMatch = html.match(/data-pageid="([^"]+)"/)
+        let pageId = pageIdMatch ? pageIdMatch[1] : ''
+
+        // Decode HTML entities (&#43; -> +, etc.)
+        pageId = pageId.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        pageId = pageId.replace(/&amp;/g, '&')
+        pageId = pageId.replace(/&lt;/g, '<')
+        pageId = pageId.replace(/&gt;/g, '>')
+        pageId = pageId.replace(/&quot;/g, '"')
+
+        if (!pageId) {
+            console.error('Could not find pageId (CSRF token) in login page')
+            return { success: false, cookies: '' }
+        }
+
+        // Generate tabID like the browser does: pageId + random number
+        const tabId = pageId + Math.floor(Math.random() * 1000)
+
+        console.log('Got pageId (CSRF):', pageId.substring(0, 20) + '...')
+        console.log('Generated tabID:', tabId.substring(0, 20) + '...')
+
+        // Step 2: Perform login via AJAX endpoint
+        const loginData = new URLSearchParams({
+            'xEvent': 'Login',
+            'xJson': JSON.stringify({ Email: email, Password: password }),
+            'arcVersion': '12',
+            'appVersion': '352',
+            'tabID': tabId,
+            'gorilla.csrf.Token': pageId
+        })
+
+        const loginResponse = await axios.post('https://einthusan.tv/ajax/login/', loginData.toString(), {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Origin': 'https://einthusan.tv',
+                'Referer': 'https://einthusan.tv/login/',
+                'Cookie': cookieString
+            }
+        })
+
+        console.log('Login response:', loginResponse.data)
+
+        // Check if login was successful
+        const success = loginResponse.data && loginResponse.data.Event === 'redirect'
+
+        // Get updated cookies from login response
+        const newCookies = loginResponse.headers['set-cookie'] || []
+        const allCookies = [...setCookies, ...newCookies].map(c => c.split(';')[0]).join('; ')
+
+        console.log(`Einthusan login: ${success ? 'SUCCESS' : 'FAILED'}`)
+
+        return { success, cookies: allCookies }
+    } catch (error) {
+        console.error('Einthusan login error:', error.message)
+        return { success: false, cookies: '' }
+    }
+}
+
+// Convert IP-based URL to CDN URL for better compatibility
+// Transform: https://28.38.198.249/etv/content/D1i6L.mp4?e=...&md5=...
+//         → https://cdn2.einthusan.io/d/etv/content/D1i6L.mp4?e=...&md5=...&p=priority
+function convertToCdnUrl(ipUrl, cdnIndex = 2) {
+    try {
+        const url = new URL(ipUrl)
+        // Replace IP with CDN domain and add /d/ prefix to path
+        let cdnUrl = `https://cdn${cdnIndex}.einthusan.io/d${url.pathname}${url.search}`
+        // Ensure p=priority is in the URL
+        if (!cdnUrl.includes('p=priority')) {
+            cdnUrl += cdnUrl.includes('?') ? '&p=priority' : '?p=priority'
+        }
+        return cdnUrl
+    } catch (e) {
+        console.error('Error converting to CDN URL:', e.message)
+        return ipUrl
+    }
+}
+
+// Extract video info from HTML data attributes
+// Returns: { movieCode, quality, e, md5, cdnUrl }
+function extractVideoInfo(html) {
+    const mp4LinkMatch = html.match(/data-mp4-link="([^"]+)"/)
+    if (!mp4LinkMatch) {
+        console.log('No data-mp4-link found in page')
+        return null
+    }
+
+    const ipUrl = mp4LinkMatch[1].replace(/&amp;/g, '&')
+    console.log('Found MP4 link:', ipUrl)
+
+    // Parse the URL to extract components
+    // Format: https://IP/etv/content/D{movieCode}.mp4?e={expiry}&md5={hash}&p=priority
+    const urlMatch = ipUrl.match(/\/etv\/content\/([DB])([^.]+)\.mp4\?e=(\d+)&md5=([^&]+)/)
+    if (!urlMatch) {
+        console.log('Could not parse video URL format')
+        return null
+    }
+
+    const [, qualityPrefix, movieCode, expiry, md5] = urlMatch
+    const quality = qualityPrefix === 'B' ? 'UHD' : 'HD'
+
+    // Convert to CDN URL
+    const cdnUrl = convertToCdnUrl(ipUrl)
+
+    return {
+        movieCode,
+        quality,
+        qualityPrefix,
+        expiry,
+        md5,
+        ipUrl,
+        cdnUrl
+    }
+}
+
+// Use Puppeteer to render the page and extract the download link
+async function getDownloadLink(pageUrl, cookies) {
+    const browser = await getBrowser()
+    const page = await browser.newPage()
+
+    try {
+        console.log(`Rendering page with Puppeteer: ${pageUrl}`)
+
+        // Set cookies
+        if (cookies) {
+            const cookieArray = cookies.split('; ').map(c => {
+                const [name, value] = c.split('=')
+                return { name, value, domain: 'einthusan.tv' }
+            })
+            await page.setCookie(...cookieArray)
+        }
+
+        // Set user agent
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+        // Navigate to page
+        await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 })
+
+        // Wait for the download button to be populated (JavaScript needs to run)
+        await page.waitForSelector('#download-content', { timeout: 10000 })
+
+        // Wait a bit more for JS to populate the href
+        await page.waitForFunction(() => {
+            const btn = document.querySelector('#download-content')
+            return btn && btn.href && btn.href.length > 10
+        }, { timeout: 15000 }).catch(() => {
+            console.log('Download button href not populated, trying alternative method')
+        })
+
+        // Extract the download link
+        const downloadLink = await page.evaluate(() => {
+            const btn = document.querySelector('#download-content')
+            return btn ? btn.href : null
+        })
+
+        // Also check if UHD is available
+        const hasUHD = await page.evaluate(() => {
+            return document.body.innerHTML.includes('uhd=true') ||
+                   document.body.innerHTML.includes('Watch in Ultra HD')
+        })
+
+        // Get movie code from data attribute
+        const movieCode = await page.evaluate(() => {
+            const player = document.querySelector('#UIVideoPlayer')
+            const mp4Link = player?.getAttribute('data-mp4-link') || ''
+            const match = mp4Link.match(/\/([DB])([^.]+)\.mp4/)
+            return match ? match[2] : null
+        })
+
+        console.log(`Download link: ${downloadLink}`)
+        console.log(`Has UHD: ${hasUHD}`)
+        console.log(`Movie code: ${movieCode}`)
+
+        return { downloadLink, hasUHD, movieCode }
+    } catch (error) {
+        console.error('Puppeteer error:', error.message)
+        return { downloadLink: null, hasUHD: false, movieCode: null }
+    } finally {
+        await page.close()
+    }
+}
+
+// Fetch movie page and get available quality options
+async function getMovieStreams(movieUrl, cookies) {
+    try {
+        console.log(`Fetching movie streams: ${movieUrl}`)
+        const streams = []
+
+        // Get HD download link
+        const hdResult = await getDownloadLink(movieUrl, cookies)
+
+        if (hdResult.downloadLink) {
+            streams.push({
+                quality: 'HD',
+                videoUrl: hdResult.downloadLink,
+                movieCode: hdResult.movieCode,
+                pageUrl: movieUrl
+            })
+            console.log(`Found HD stream: ${hdResult.downloadLink.substring(0, 80)}...`)
+        }
+
+        // If UHD is available, get UHD download link
+        if (hdResult.hasUHD) {
+            const uhdPageUrl = movieUrl.includes('?')
+                ? `${movieUrl}&uhd=true`
+                : `${movieUrl}?uhd=true`
+
+            console.log(`Fetching UHD version: ${uhdPageUrl}`)
+            const uhdResult = await getDownloadLink(uhdPageUrl, cookies)
+
+            if (uhdResult.downloadLink && uhdResult.downloadLink !== hdResult.downloadLink) {
+                streams.push({
+                    quality: 'UHD (4K)',
+                    videoUrl: uhdResult.downloadLink,
+                    movieCode: uhdResult.movieCode,
+                    pageUrl: uhdPageUrl
+                })
+                console.log(`Found UHD stream: ${uhdResult.downloadLink.substring(0, 80)}...`)
+            }
+        }
+
+        return {
+            hasUHD: hdResult.hasUHD,
+            streams,
+            pageUrl: movieUrl
+        }
+    } catch (error) {
+        console.error('Error fetching movie streams:', error.message)
+        return { hasUHD: false, streams: [], pageUrl: movieUrl }
+    }
+}
+
+// Search Einthusan for movies by title
+async function searchEinthusan(title, cookies) {
+    try {
+        // Search across all languages (empty lang parameter)
+        const searchUrl = `https://einthusan.tv/movie/results/?lang=&query=${encodeURIComponent(title)}`
+
+        console.log(`Searching Einthusan: ${searchUrl}`)
+
+        const response = await axios.get(searchUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Cookie': cookies
+            }
+        })
+
+        const html = response.data
+        const movies = []
+
+        // Parse movie results using regex
+        // Each movie is in: <a class="title" href="/movie/watch/{id}/?lang={lang}"><h3>{title}</h3>
+        const movieRegex = /<li>.*?<a[^>]*href="(\/movie\/watch\/[^"]+)"[^>]*>.*?<\/a>.*?<a class="title"[^>]*href="[^"]*"[^>]*><h3>([^<]+)<\/h3>(?:<span[^>]*>([^<]*)<\/span>)?<\/a>.*?<div class="info">.*?<p>(\d{4})<span>([^<]+)<\/span><\/p>.*?<p class="synopsis">([^<]*)<\/p>/gs
+
+        let match
+        while ((match = movieRegex.exec(html)) !== null) {
+            const [, url, movieTitle, badge, year, language, synopsis] = match
+            movies.push({
+                url: `https://einthusan.tv${url}`,
+                title: movieTitle.trim(),
+                badge: badge?.trim() || '',
+                year: year,
+                language: language.trim(),
+                synopsis: synopsis.trim().substring(0, 100) + '...'
+            })
+        }
+
+        // Simpler fallback regex if the above doesn't work
+        if (movies.length === 0) {
+            const simpleRegex = /<a class="title"[^>]*href="(\/movie\/watch\/[^"]+)"[^>]*><h3>([^<]+)<\/h3>/g
+            const yearRegex = /<p>(\d{4})<span>([^<]+)<\/span><\/p>/g
+
+            const urls = [...html.matchAll(/<a[^>]*href="(\/movie\/watch\/[^"]+\?lang=[^"]+)"[^>]*>/g)]
+            const titles = [...html.matchAll(/<a class="title"[^>]*><h3>([^<]+)<\/h3>/g)]
+            const years = [...html.matchAll(/<p>(\d{4})<span>([^<]+)<\/span><\/p>/g)]
+
+            // Get unique movie URLs
+            const uniqueUrls = [...new Set(urls.map(m => m[1]))]
+
+            for (let i = 0; i < Math.min(uniqueUrls.length, titles.length, years.length); i++) {
+                movies.push({
+                    url: `https://einthusan.tv${uniqueUrls[i]}`,
+                    title: titles[i]?.[1] || 'Unknown',
+                    year: years[i]?.[1] || '',
+                    language: years[i]?.[2] || '',
+                    synopsis: ''
+                })
+            }
+        }
+
+        console.log(`Found ${movies.length} movies on Einthusan`)
+        return movies
+    } catch (error) {
+        console.error('Einthusan search error:', error.message)
+        return []
+    }
+}
+
+// Fetch movie info using OMDB API (free tier)
+async function getMovieInfo(imdbId) {
+    try {
+        // Using OMDB API - free tier with API key
+        const apiKey = '3e974fca'  // Free demo key - get your own at omdbapi.com
+        const url = `https://www.omdbapi.com/?i=${imdbId}&apikey=${apiKey}`
+
+        const response = await axios.get(url)
+        const data = response.data
+
+        if (data.Response === 'True') {
+            return {
+                title: data.Title || 'Unknown',
+                language: data.Language || 'Unknown',
+                year: data.Year || 'Unknown',
+                genre: data.Genre || 'Unknown',
+                country: data.Country || 'Unknown',
+                imdbId: imdbId
+            }
+        } else {
+            console.log('OMDB Error:', data.Error)
+            return { title: 'Not Found', language: 'Unknown', year: 'N/A', imdbId }
+        }
+    } catch (error) {
+        console.error('Error fetching movie info:', error.message)
+        return { title: 'Error', language: 'Could not fetch', year: 'N/A', imdbId }
+    }
+}
+
+// Addon manifest configuration
+const manifest = {
+    id: 'com.stremio.einthusan',
+    version: '1.0.1',
+    name: 'Einthusan',
+    description: 'Stream movies from Einthusan. Developed and maintained by bmk007.',
+    resources: ['stream'],
+    types: ['movie'],
+    idPrefixes: ['tt'],  // IMDb IDs
+    catalogs: [],
+    // Configuration fields - shown when user installs the addon
+    config: [
+        {
+            key: 'email',
+            type: 'text',
+            title: 'Email',
+            required: true
+        },
+        {
+            key: 'password',
+            type: 'password',
+            title: 'Password',
+            required: true
+        }
+    ],
+    behaviorHints: {
+        configurable: true,
+        configurationRequired: true  // Forces user to configure before using
+    }
+}
+
+const builder = new addonBuilder(manifest)
+
+// Stream handler - called when user clicks on a movie
+builder.defineStreamHandler(async (args) => {
+    const { type, id, config } = args
+
+    // Access user credentials from config
+    const email = config?.email || ''
+    const password = config?.password || ''
+    const cacheKey = email || 'anonymous'
+
+    console.log(`\n=== Stream Request: ${id} ===`)
+
+    // Step 1: Check if we have cached session cookies
+    let cookies = sessionCache.get(cacheKey) || ''
+
+    // Step 2: Check Einthusan login status
+    const loginStatus = await checkEinthusanLogin(cookies)
+
+    if (!loginStatus.isLoggedIn) {
+        console.log('Not logged in, attempting login...')
+
+        // Check if credentials are provided
+        if (!email || !password) {
+            // No credentials - ask user to configure
+            return {
+                streams: [{
+                    name: 'Einthusan | Login Required',
+                    description: [
+                        '⚠️ Not logged into Einthusan',
+                        '',
+                        'Please configure the addon with your',
+                        'Einthusan email and password.',
+                        '',
+                        'Go to: Addons → Einthusan → Configure'
+                    ].join('\n'),
+                    externalUrl: 'https://einthusan.tv/login/'
+                }]
+            }
+        }
+
+        // Try to login with credentials
+        const loginResult = await loginToEinthusan(email, password)
+
+        if (!loginResult.success) {
+            return {
+                streams: [{
+                    name: 'Einthusan | Login Failed',
+                    description: [
+                        '❌ Login to Einthusan failed',
+                        '',
+                        'Please check your email and password.',
+                        `Email: ${email}`,
+                        '',
+                        'Reconfigure the addon with correct credentials.'
+                    ].join('\n'),
+                    externalUrl: 'https://einthusan.tv/login/'
+                }]
+            }
+        }
+
+        // Cache the session cookies
+        cookies = loginResult.cookies
+        sessionCache.set(cacheKey, cookies)
+        console.log('Login successful, cookies cached')
+    }
+
+    // Step 3: Now logged in - fetch movie info from IMDB
+    const movieInfo = await getMovieInfo(id)
+    console.log('Movie Info:', movieInfo)
+
+    // Step 4: Search Einthusan for the movie
+    const einthusanMovies = await searchEinthusan(movieInfo.title, cookies)
+
+    // Create streams for each matching movie
+    const streams = []
+
+    if (einthusanMovies.length === 0) {
+        // No results found
+        streams.push({
+            name: `Einthusan | No Results`,
+            description: [
+                `Searched for: ${movieInfo.title}`,
+                `Language: ${movieInfo.language}`,
+                `Year: ${movieInfo.year}`,
+                '',
+                'No movies found on Einthusan'
+            ].join('\n'),
+            externalUrl: `https://einthusan.tv/movie/results/?lang=&query=${encodeURIComponent(movieInfo.title)}`
+        })
+    } else {
+        // Add each movie as stream options (HD and UHD if available)
+        for (const movie of einthusanMovies) {
+            // Fetch movie page and get all available quality streams
+            const movieStreams = await getMovieStreams(movie.url, cookies)
+
+            if (movieStreams.streams.length === 0) {
+                // No video URLs found, add fallback external link
+                streams.push({
+                    name: `Einthusan | ${movie.language}`,
+                    description: [
+                        `${movie.title} (${movie.year})`,
+                        movie.badge ? `[${movie.badge}]` : '',
+                        `Language: ${movie.language}`,
+                        movie.synopsis ? `\n${movie.synopsis}` : ''
+                    ].filter(Boolean).join('\n'),
+                    externalUrl: movie.url
+                })
+            } else {
+                // Add a stream entry for each quality option (HD, UHD)
+                // Using url for direct playback in Stremio
+                for (const stream of movieStreams.streams) {
+                    streams.push({
+                        name: `Einthusan | ${movie.language} | ${stream.quality}`,
+                        description: [
+                            `${movie.title} (${movie.year})`,
+                            `Quality: ${stream.quality}`,
+                            stream.movieCode ? `Code: ${stream.movieCode}` : '',
+                            movie.badge ? `[${movie.badge}]` : '',
+                            `Language: ${movie.language}`,
+                            movie.synopsis ? `\n${movie.synopsis}` : ''
+                        ].filter(Boolean).join('\n'),
+                        url: stream.videoUrl,  // Direct playback in Stremio
+                        behaviorHints: {
+                            notWebReady: false
+                        }
+                    })
+                }
+            }
+        }
+    }
+
+    return { streams }
+})
+
+// Start the server
+const PORT = process.env.PORT || 7777
+const HOST = process.env.HOST || '0.0.0.0'  // Listen on all interfaces
+serveHTTP(builder.getInterface(), { port: PORT })
+console.log(`Addon running at http://${HOST}:${PORT}/manifest.json`)
