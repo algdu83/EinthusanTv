@@ -544,6 +544,13 @@ module.exports = async (req, res) => {
         return
     }
 
+    // Route: /{email}/{password}/configure (configured addon settings)
+    if (pathParts.length === 3 && pathParts[2] === 'configure') {
+        res.setHeader('Content-Type', 'text/html')
+        res.end(getConfigurePage(host))
+        return
+    }
+
     // Route: /{email}/{password}/stream/{type}/{id}.json
     if (pathParts.length >= 5 && pathParts[2] === 'stream') {
         const email = decodeURIComponent(pathParts[0])
