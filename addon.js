@@ -276,7 +276,7 @@ async function getMovieStreams(movieUrl, cookies) {
                 movieCode: hdResult.movieCode,
                 pageUrl: movieUrl
             })
-            console.log(`Found HD stream: ${hdResult.downloadLink.substring(0, 80)}...`)
+            console.log(`Found HD stream URL: ${hdResult.downloadLink}`)
         }
 
         // If UHD is available, get UHD download link
@@ -295,7 +295,7 @@ async function getMovieStreams(movieUrl, cookies) {
                     movieCode: uhdResult.movieCode,
                     pageUrl: uhdPageUrl
                 })
-                console.log(`Found UHD stream: ${uhdResult.downloadLink.substring(0, 80)}...`)
+                console.log(`Found UHD stream URL: ${uhdResult.downloadLink}`)
             }
         }
 
