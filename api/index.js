@@ -100,18 +100,26 @@ function extractVideoUrl(html) {
     const mp4LinkMatch = html.match(/data-mp4-link="([^"]+)"/)
     if (mp4LinkMatch) {
         const ipUrl = mp4LinkMatch[1].replace(/&amp;/g, '&')
+
+        // Extract movie code from URL (e.g., D1i6L or B1i6L)
+        const codeMatch = ipUrl.match(/\/([DB])([^.]+)\.mp4/)
+        const movieCode = codeMatch ? codeMatch[2] : null
+        const qualityPrefix = codeMatch ? codeMatch[1] : 'D'
+
         // Try CDN URL first, fallback to IP URL
         const cdnUrl = convertToCdnUrl(ipUrl)
         console.log('IP URL:', ipUrl)
         console.log('CDN URL:', cdnUrl)
-        return cdnUrl
+        console.log('Movie Code:', movieCode)
+
+        return { url: cdnUrl, movieCode, qualityPrefix }
     }
 
     // Fallback: try to find HLS link
     const hlsMatch = html.match(/data-hls-link="([^"]+)"/)
     if (hlsMatch) {
         const hlsUrl = hlsMatch[1].replace(/&amp;/g, '&')
-        return convertToCdnUrl(hlsUrl)
+        return { url: convertToCdnUrl(hlsUrl), movieCode: null, qualityPrefix: null }
     }
 
     return null
@@ -131,9 +139,14 @@ async function getMovieStreams(movieUrl, cookies) {
         const streams = []
         const hasUHD = html.includes('uhd=true')
 
-        const hdUrl = extractVideoUrl(html)
-        if (hdUrl) {
-            streams.push({ quality: 'HD', videoUrl: hdUrl, pageUrl: movieUrl })
+        const hdResult = extractVideoUrl(html)
+        if (hdResult) {
+            streams.push({
+                quality: 'HD',
+                videoUrl: hdResult.url,
+                movieCode: hdResult.movieCode,
+                pageUrl: movieUrl
+            })
         }
 
         if (hasUHD) {
@@ -145,9 +158,14 @@ async function getMovieStreams(movieUrl, cookies) {
                         'Cookie': cookies
                     }
                 })
-                const uhdUrl = extractVideoUrl(uhdResponse.data)
-                if (uhdUrl && uhdUrl !== hdUrl) {
-                    streams.push({ quality: 'UHD (4K)', videoUrl: uhdUrl, pageUrl: uhdPageUrl })
+                const uhdResult = extractVideoUrl(uhdResponse.data)
+                if (uhdResult && uhdResult.url !== hdResult?.url) {
+                    streams.push({
+                        quality: 'UHD (4K)',
+                        videoUrl: uhdResult.url,
+                        movieCode: uhdResult.movieCode,
+                        pageUrl: uhdPageUrl
+                    })
                 }
             } catch (e) {}
         }
@@ -306,7 +324,12 @@ builder.defineStreamHandler(async (args) => {
                 for (const stream of movieStreams.streams) {
                     streams.push({
                         name: `Einthusan | ${movie.language} | ${stream.quality}`,
-                        description: `${movie.title} (${movie.year}) - ${stream.quality}`,
+                        description: [
+                            `${movie.title} (${movie.year})`,
+                            `Quality: ${stream.quality}`,
+                            stream.movieCode ? `Code: ${stream.movieCode}` : '',
+                            `Language: ${movie.language}`
+                        ].filter(Boolean).join('\n'),
                         url: stream.videoUrl,
                         behaviorHints: { notWebReady: false }
                     })
