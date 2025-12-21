@@ -418,9 +418,10 @@ async function getMovieInfo(imdbId) {
 // Addon manifest configuration
 const manifest = {
     id: 'com.stremio.einthusan',
-    version: '1.0.1',
+    version: '1.0.3',
     name: 'Einthusan',
     description: 'Stream movies from Einthusan. Developed and maintained by bmk007.',
+    logo: 'https://www.einthusan.tv/etc/favicon-32x32.png',
     resources: ['stream'],
     types: ['movie'],
     idPrefixes: ['tt'],  // IMDb IDs
@@ -430,13 +431,13 @@ const manifest = {
         {
             key: 'email',
             type: 'text',
-            title: 'Email',
+            title: 'Einthusan Email',
             required: true
         },
         {
             key: 'password',
             type: 'password',
-            title: 'Password',
+            title: 'Einthusan Password',
             required: true
         }
     ],
@@ -584,5 +585,10 @@ builder.defineStreamHandler(async (args) => {
 // Start the server
 const PORT = process.env.PORT || 7777
 const HOST = process.env.HOST || '0.0.0.0'  // Listen on all interfaces
-serveHTTP(builder.getInterface(), { port: PORT })
+
+// Get the addon interface and router
+const addonInterface = builder.getInterface()
+
+serveHTTP(addonInterface, { port: PORT })
 console.log(`Addon running at http://${HOST}:${PORT}/manifest.json`)
+console.log(`Configure at: http://${HOST}:${PORT}/configure`)
