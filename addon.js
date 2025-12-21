@@ -277,47 +277,48 @@ async function getMovieStreams(movieUrl, cookies) {
         console.log(`Fetching movie streams: ${movieUrl}`)
         const streams = []
 
-        // Get HD download link
+        // Step 1: Get HD download link (default page)
+        console.log('Step 1: Getting HD link...')
         const hdResult = await getDownloadLink(movieUrl, cookies)
 
-        if (hdResult.downloadLink) {
-            streams.push({
-                quality: 'HD',
-                videoUrl: hdResult.downloadLink,
-                movieCode: hdResult.movieCode,
-                pageUrl: movieUrl
-            })
-            console.log(`Found HD stream URL: ${hdResult.downloadLink}`)
+        if (!hdResult.downloadLink) {
+            console.log('No HD link found')
+            return { streams: [], pageUrl: movieUrl }
         }
 
-        // If UHD is available, get UHD download link
-        if (hdResult.hasUHD) {
-            const uhdPageUrl = movieUrl.includes('?')
-                ? `${movieUrl}&uhd=true`
-                : `${movieUrl}?uhd=true`
-
-            console.log(`Fetching UHD version: ${uhdPageUrl}`)
-            const uhdResult = await getDownloadLink(uhdPageUrl, cookies, true)
-
-            if (uhdResult.downloadLink && uhdResult.downloadLink !== hdResult.downloadLink) {
-                streams.push({
-                    quality: 'UHD (4K)',
-                    videoUrl: uhdResult.downloadLink,
-                    movieCode: uhdResult.movieCode,
-                    pageUrl: uhdPageUrl
-                })
-                console.log(`Found UHD stream URL: ${uhdResult.downloadLink}`)
-            }
-        }
-
-        return {
-            hasUHD: hdResult.hasUHD,
-            streams,
+        console.log(`HD link: ${hdResult.downloadLink}`)
+        streams.push({
+            quality: 'HD',
+            videoUrl: hdResult.downloadLink,
+            movieCode: hdResult.movieCode,
             pageUrl: movieUrl
+        })
+
+        // Step 2: Always try to get UHD - add &uhd=true and visit
+        const uhdPageUrl = movieUrl.includes('?')
+            ? `${movieUrl}&uhd=true`
+            : `${movieUrl}?uhd=true`
+
+        console.log(`Step 2: Checking UHD at ${uhdPageUrl}`)
+        const uhdResult = await getDownloadLink(uhdPageUrl, cookies, true)
+
+        // Step 3: If UHD has different link, add it. Otherwise just use HD.
+        if (uhdResult.downloadLink && uhdResult.downloadLink !== hdResult.downloadLink) {
+            console.log(`UHD link found: ${uhdResult.downloadLink}`)
+            streams.push({
+                quality: 'UHD (4K)',
+                videoUrl: uhdResult.downloadLink,
+                movieCode: uhdResult.movieCode,
+                pageUrl: uhdPageUrl
+            })
+        } else {
+            console.log('No UHD link or same as HD, using HD only')
         }
+
+        return { streams, pageUrl: movieUrl }
     } catch (error) {
         console.error('Error fetching movie streams:', error.message)
-        return { hasUHD: false, streams: [], pageUrl: movieUrl }
+        return { streams: [], pageUrl: movieUrl }
     }
 }
 
