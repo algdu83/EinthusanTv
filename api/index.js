@@ -672,7 +672,13 @@ async function handleStreamRequest(imdbId, email, password) {
     if (einthusanMovies.length === 0) {
         streams.push({
             name: 'Einthusan | No Results',
-            description: 'No results for: ' + movieInfo.title,
+            description: [
+                'Searched for: ' + movieInfo.title,
+                'Language: ' + movieInfo.language,
+                'Year: ' + movieInfo.year,
+                '',
+                'No movies found on Einthusan'
+            ].join('\n'),
             externalUrl: 'https://einthusan.tv/movie/results/?query=' + encodeURIComponent(movieInfo.title)
         })
     } else {
@@ -682,14 +688,21 @@ async function handleStreamRequest(imdbId, email, password) {
             if (movieStreams.streams.length === 0) {
                 streams.push({
                     name: 'Einthusan | ' + movie.language,
-                    description: movie.title + ' (' + movie.year + ')',
+                    description: [
+                        movie.title + ' (' + movie.year + ')',
+                        'Language: ' + movie.language
+                    ].join('\n'),
                     externalUrl: movie.url
                 })
             } else {
                 for (const stream of movieStreams.streams) {
                     streams.push({
                         name: 'Einthusan | ' + movie.language + ' | ' + stream.quality,
-                        description: movie.title + ' (' + movie.year + ')',
+                        description: [
+                            movie.title + ' (' + movie.year + ')',
+                            'Quality: ' + stream.quality,
+                            'Language: ' + movie.language
+                        ].join('\n'),
                         url: stream.videoUrl,
                         behaviorHints: { notWebReady: false }
                     })
