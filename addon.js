@@ -137,8 +137,12 @@ async function loginToEinthusan(email, password) {
 function convertToCdnUrl(ipUrl, cdnIndex = 2) {
     try {
         const url = new URL(ipUrl)
-        // Replace IP with CDN domain and add /d/ prefix to path
-        let cdnUrl = `https://cdn${cdnIndex}.einthusan.io/d${url.pathname}${url.search}`
+        // Replace IP with CDN domain, add /d/ prefix only if not already present
+        let path = url.pathname
+        if (!path.startsWith('/d/')) {
+            path = '/d' + path
+        }
+        let cdnUrl = `https://cdn${cdnIndex}.einthusan.io${path}${url.search}`
         // Ensure p=priority is in the URL
         if (!cdnUrl.includes('p=priority')) {
             cdnUrl += cdnUrl.includes('?') ? '&p=priority' : '?p=priority'
