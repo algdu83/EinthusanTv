@@ -427,7 +427,7 @@ const manifest = {
     version: '1.0.3',
     name: 'Einthusan',
     description: 'Stream movies from Einthusan. Developed and maintained by bmk007.',
-    logo: 'https://www.einthusan.tv/etc/favicon-32x32.png',
+    logo: '',
     resources: ['stream'],
     types: ['movie'],
     idPrefixes: ['tt'],  // IMDb IDs
