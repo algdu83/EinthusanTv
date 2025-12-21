@@ -602,6 +602,7 @@ builder.defineStreamHandler(async (args) => {
         }
     }
 
+    console.log('Returning streams to Stremio:', JSON.stringify(streams, null, 2))
     return { streams }
 })
 
