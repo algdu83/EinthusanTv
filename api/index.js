@@ -537,10 +537,18 @@ module.exports = async (req, res) => {
         return
     }
 
-    // Route: /{email}/{password}/manifest.json (configured)
+    // Route: /{email}/{password}/manifest.json (configured - no config required)
     if (pathParts.length === 3 && pathParts[2] === 'manifest.json') {
+        // Return manifest WITHOUT configurationRequired for configured addons
+        const configuredManifest = {
+            ...addonInterface.manifest,
+            behaviorHints: {
+                configurable: false,
+                configurationRequired: false
+            }
+        }
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(addonInterface.manifest))
+        res.end(JSON.stringify(configuredManifest))
         return
     }
 
