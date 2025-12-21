@@ -3,32 +3,7 @@ const axios = require('axios')
 
 // Note: Puppeteer won't work well on Vercel serverless
 // Using direct extraction instead (faster but may not get all URLs)
-
-// Store session cookies per user (in memory - will reset on cold starts)
-const sessionCache = new Map()
-
-// Check if user is logged into Einthusan
-async function checkEinthusanLogin(cookies = '') {
-    try {
-        const response = await axios.get('https://einthusan.tv/login/', {
-            maxRedirects: 0,
-            validateStatus: (status) => status < 400 || status === 307,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Cookie': cookies
-            }
-        })
-        const isLoggedIn = response.status === 307
-        console.log(`Einthusan login check: ${response.status} - ${isLoggedIn ? 'LOGGED IN' : 'NOT LOGGED IN'}`)
-        return { isLoggedIn, status: response.status }
-    } catch (error) {
-        if (error.response?.status === 307) {
-            return { isLoggedIn: true, status: 307 }
-        }
-        console.error('Einthusan login check error:', error.message)
-        return { isLoggedIn: false, status: error.response?.status || 0 }
-    }
-}
+// No session caching - login fresh on every request (stateless for serverless)
 
 // Login to Einthusan and get session cookies
 async function loginToEinthusan(email, password) {
@@ -280,37 +255,32 @@ builder.defineStreamHandler(async (args) => {
     const { id, config } = args
     const email = config?.email || ''
     const password = config?.password || ''
-    const cacheKey = email || 'anonymous'
 
-    let cookies = sessionCache.get(cacheKey) || ''
-    const loginStatus = await checkEinthusanLogin(cookies)
-
-    if (!loginStatus.isLoggedIn) {
-        if (!email || !password) {
-            return {
-                streams: [{
-                    name: 'Einthusan | Login Required',
-                    description: 'Please configure the addon with your Einthusan credentials.',
-                    externalUrl: 'https://einthusan.tv/login/'
-                }]
-            }
+    // Always require credentials
+    if (!email || !password) {
+        return {
+            streams: [{
+                name: 'Einthusan | Login Required',
+                description: 'Please configure the addon with your Einthusan credentials.',
+                externalUrl: 'https://einthusan.tv/login/'
+            }]
         }
-
-        const loginResult = await loginToEinthusan(email, password)
-        if (!loginResult.success) {
-            return {
-                streams: [{
-                    name: 'Einthusan | Login Failed',
-                    description: 'Please check your email and password.',
-                    externalUrl: 'https://einthusan.tv/login/'
-                }]
-            }
-        }
-
-        cookies = loginResult.cookies
-        sessionCache.set(cacheKey, cookies)
     }
 
+    // Login fresh on every request (stateless)
+    console.log('Logging in fresh for:', email)
+    const loginResult = await loginToEinthusan(email, password)
+    if (!loginResult.success) {
+        return {
+            streams: [{
+                name: 'Einthusan | Login Failed',
+                description: 'Please check your email and password.',
+                externalUrl: 'https://einthusan.tv/login/'
+            }]
+        }
+    }
+
+    const cookies = loginResult.cookies
     const movieInfo = await getMovieInfo(id)
     const einthusanMovies = await searchEinthusan(movieInfo.title, cookies, movieInfo.language)
 
@@ -645,25 +615,19 @@ module.exports = async (req, res) => {
 
 // Direct stream handler for configured requests
 async function handleStreamRequest(imdbId, email, password) {
-    const cacheKey = email || 'anonymous'
-    let cookies = sessionCache.get(cacheKey) || ''
-
-    // Check login
-    const loginStatus = await checkEinthusanLogin(cookies)
-
-    if (!loginStatus.isLoggedIn) {
-        if (!email || !password) {
-            return { streams: [{ name: 'Einthusan | Login Required', description: 'Configure addon first', externalUrl: 'https://einthusan.tv' }] }
-        }
-
-        const loginResult = await loginToEinthusan(email, password)
-        if (!loginResult.success) {
-            return { streams: [{ name: 'Einthusan | Login Failed', description: 'Check credentials', externalUrl: 'https://einthusan.tv' }] }
-        }
-        cookies = loginResult.cookies
-        sessionCache.set(cacheKey, cookies)
+    // Always require credentials
+    if (!email || !password) {
+        return { streams: [{ name: 'Einthusan | Login Required', description: 'Configure addon first', externalUrl: 'https://einthusan.tv' }] }
     }
 
+    // Login fresh on every request (stateless)
+    console.log('Logging in fresh for:', email)
+    const loginResult = await loginToEinthusan(email, password)
+    if (!loginResult.success) {
+        return { streams: [{ name: 'Einthusan | Login Failed', description: 'Check credentials', externalUrl: 'https://einthusan.tv' }] }
+    }
+
+    const cookies = loginResult.cookies
     const movieInfo = await getMovieInfo(imdbId)
     const einthusanMovies = await searchEinthusan(movieInfo.title, cookies, movieInfo.language)
 
