@@ -222,10 +222,16 @@ async function getDownloadLink(pageUrl, cookies) {
         })
 
         // Extract the download link
-        const downloadLink = await page.evaluate(() => {
+        let downloadLink = await page.evaluate(() => {
             const btn = document.querySelector('#download-content')
             return btn ? btn.href : null
         })
+
+        // Convert IP URL to CDN URL for better playback
+        if (downloadLink && downloadLink.includes('/etv/')) {
+            downloadLink = convertToCdnUrl(downloadLink)
+            console.log('Converted to CDN URL:', downloadLink)
+        }
 
         // Also check if UHD is available
         const hasUHD = await page.evaluate(() => {
