@@ -192,12 +192,13 @@ function extractVideoInfo(html) {
 }
 
 // Use Puppeteer to render the page and extract the download link
-async function getDownloadLink(pageUrl, cookies) {
+async function getDownloadLink(pageUrl, cookies, expectUHD = false) {
     const browser = await getBrowser()
     const page = await browser.newPage()
 
     try {
         console.log(`Rendering page with Puppeteer: ${pageUrl}`)
+        console.log(`Expecting UHD: ${expectUHD}`)
 
         // Set cookies
         if (cookies) {
@@ -218,11 +219,17 @@ async function getDownloadLink(pageUrl, cookies) {
         await page.waitForSelector('#download-content', { timeout: 10000 })
 
         // Wait a bit more for JS to populate the href
-        await page.waitForFunction(() => {
+        // If expecting UHD, wait for B prefix in URL
+        await page.waitForFunction((expectUHD) => {
             const btn = document.querySelector('#download-content')
-            return btn && btn.href && btn.href.length > 10
-        }, { timeout: 15000 }).catch(() => {
-            console.log('Download button href not populated, trying alternative method')
+            if (!btn || !btn.href || btn.href.length < 10) return false
+            if (expectUHD) {
+                // UHD links have /B in the path
+                return btn.href.includes('/B')
+            }
+            return true
+        }, { timeout: 15000 }, expectUHD).catch(() => {
+            console.log('Download button href not populated or UHD not found, using available link')
         })
 
         // Extract the download link
@@ -290,7 +297,7 @@ async function getMovieStreams(movieUrl, cookies) {
                 : `${movieUrl}?uhd=true`
 
             console.log(`Fetching UHD version: ${uhdPageUrl}`)
-            const uhdResult = await getDownloadLink(uhdPageUrl, cookies)
+            const uhdResult = await getDownloadLink(uhdPageUrl, cookies, true)
 
             if (uhdResult.downloadLink && uhdResult.downloadLink !== hdResult.downloadLink) {
                 streams.push({
