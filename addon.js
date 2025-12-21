@@ -568,37 +568,21 @@ builder.defineStreamHandler(async (args) => {
         // Fetch movie page and get all available quality streams
         const movieStreams = await getMovieStreams(movie.url, cookies)
 
-        if (movieStreams.streams.length === 0) {
-            // No video URLs found, add fallback external link
+        // Add stream entries for each quality (HD, UHD) - always use url, never redirect
+        for (const stream of movieStreams.streams) {
             streams.push({
-                name: `Einthusan | ${movie.language}`,
+                name: `Einthusan | ${movie.language} | ${stream.quality}`,
                 description: [
                     `${movie.title} (${movie.year})`,
-                    movie.badge ? `[${movie.badge}]` : '',
-                    `Language: ${movie.language}`,
-                    movie.synopsis ? `\n${movie.synopsis}` : ''
+                    `Quality: ${stream.quality}`,
+                    stream.movieCode ? `Code: ${stream.movieCode}` : '',
+                    `Language: ${movie.language}`
                 ].filter(Boolean).join('\n'),
-                externalUrl: movie.url
+                url: stream.videoUrl,
+                behaviorHints: {
+                    notWebReady: false
+                }
             })
-        } else {
-            // Add a stream entry for each quality option (HD, UHD)
-            for (const stream of movieStreams.streams) {
-                streams.push({
-                    name: `Einthusan | ${movie.language} | ${stream.quality}`,
-                    description: [
-                        `${movie.title} (${movie.year})`,
-                        `Quality: ${stream.quality}`,
-                        stream.movieCode ? `Code: ${stream.movieCode}` : '',
-                        movie.badge ? `[${movie.badge}]` : '',
-                        `Language: ${movie.language}`,
-                        movie.synopsis ? `\n${movie.synopsis}` : ''
-                    ].filter(Boolean).join('\n'),
-                    url: stream.videoUrl,
-                    behaviorHints: {
-                        notWebReady: false
-                    }
-                })
-            }
         }
     }
 
