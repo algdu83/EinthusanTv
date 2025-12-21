@@ -33,24 +33,36 @@ async function checkEinthusanLogin(cookies = '') {
 // Login to Einthusan and get session cookies
 async function loginToEinthusan(email, password) {
     try {
+        console.log('Attempting login for:', email)
+
         const loginPageResponse = await axios.get('https://einthusan.tv/login/', {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9'
             }
         })
 
         const setCookies = loginPageResponse.headers['set-cookie'] || []
         const cookieString = setCookies.map(c => c.split(';')[0]).join('; ')
+        console.log('Got initial cookies:', cookieString.substring(0, 50) + '...')
 
         const html = loginPageResponse.data
         let pageId = html.match(/data-pageid="([^"]+)"/)?.[1] || ''
+
+        // Decode HTML entities
         pageId = pageId.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
         pageId = pageId.replace(/&amp;/g, '&')
+        pageId = pageId.replace(/&lt;/g, '<')
+        pageId = pageId.replace(/&gt;/g, '>')
+        pageId = pageId.replace(/&quot;/g, '"')
 
         if (!pageId) {
+            console.error('Could not find pageId in login page')
             return { success: false, cookies: '' }
         }
+
+        console.log('Got pageId:', pageId.substring(0, 30) + '...')
 
         const tabId = pageId + Math.floor(Math.random() * 1000)
         const loginData = new URLSearchParams({
@@ -64,8 +76,9 @@ async function loginToEinthusan(email, password) {
 
         const loginResponse = await axios.post('https://einthusan.tv/ajax/login/', loginData.toString(), {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
                 'X-Requested-With': 'XMLHttpRequest',
                 'Origin': 'https://einthusan.tv',
                 'Referer': 'https://einthusan.tv/login/',
@@ -73,13 +86,22 @@ async function loginToEinthusan(email, password) {
             }
         })
 
+        console.log('Login response:', JSON.stringify(loginResponse.data))
+
         const success = loginResponse.data?.Event === 'redirect'
         const newCookies = loginResponse.headers['set-cookie'] || []
         const allCookies = [...setCookies, ...newCookies].map(c => c.split(';')[0]).join('; ')
 
+        console.log('Login success:', success)
+        console.log('All cookies:', allCookies.substring(0, 50) + '...')
+
         return { success, cookies: allCookies }
     } catch (error) {
         console.error('Einthusan login error:', error.message)
+        if (error.response) {
+            console.error('Response status:', error.response.status)
+            console.error('Response data:', error.response.data)
+        }
         return { success: false, cookies: '' }
     }
 }
@@ -103,8 +125,20 @@ function extractVideoUrl(html) {
     const mp4LinkMatch = html.match(/data-mp4-link="([^"]+)"/)
     if (mp4LinkMatch) {
         const ipUrl = mp4LinkMatch[1].replace(/&amp;/g, '&')
-        return convertToCdnUrl(ipUrl)
+        // Try CDN URL first, fallback to IP URL
+        const cdnUrl = convertToCdnUrl(ipUrl)
+        console.log('IP URL:', ipUrl)
+        console.log('CDN URL:', cdnUrl)
+        return cdnUrl
     }
+
+    // Fallback: try to find HLS link
+    const hlsMatch = html.match(/data-hls-link="([^"]+)"/)
+    if (hlsMatch) {
+        const hlsUrl = hlsMatch[1].replace(/&amp;/g, '&')
+        return convertToCdnUrl(hlsUrl)
+    }
+
     return null
 }
 
