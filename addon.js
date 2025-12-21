@@ -544,43 +544,43 @@ builder.defineStreamHandler(async (args) => {
             externalUrl: `https://einthusan.tv/movie/results/?lang=&query=${encodeURIComponent(movieInfo.title)}`
         })
     } else {
-        // Add each movie as stream options (HD and UHD if available)
-        for (const movie of einthusanMovies) {
-            // Fetch movie page and get all available quality streams
-            const movieStreams = await getMovieStreams(movie.url, cookies)
+        // Only process the first movie result for faster response
+        const movie = einthusanMovies[0]
+        console.log(`Processing first result: ${movie.title}`)
 
-            if (movieStreams.streams.length === 0) {
-                // No video URLs found, add fallback external link
+        // Fetch movie page and get all available quality streams
+        const movieStreams = await getMovieStreams(movie.url, cookies)
+
+        if (movieStreams.streams.length === 0) {
+            // No video URLs found, add fallback external link
+            streams.push({
+                name: `Einthusan | ${movie.language}`,
+                description: [
+                    `${movie.title} (${movie.year})`,
+                    movie.badge ? `[${movie.badge}]` : '',
+                    `Language: ${movie.language}`,
+                    movie.synopsis ? `\n${movie.synopsis}` : ''
+                ].filter(Boolean).join('\n'),
+                externalUrl: movie.url
+            })
+        } else {
+            // Add a stream entry for each quality option (HD, UHD)
+            for (const stream of movieStreams.streams) {
                 streams.push({
-                    name: `Einthusan | ${movie.language}`,
+                    name: `Einthusan | ${movie.language} | ${stream.quality}`,
                     description: [
                         `${movie.title} (${movie.year})`,
+                        `Quality: ${stream.quality}`,
+                        stream.movieCode ? `Code: ${stream.movieCode}` : '',
                         movie.badge ? `[${movie.badge}]` : '',
                         `Language: ${movie.language}`,
                         movie.synopsis ? `\n${movie.synopsis}` : ''
                     ].filter(Boolean).join('\n'),
-                    externalUrl: movie.url
+                    url: stream.videoUrl,
+                    behaviorHints: {
+                        notWebReady: false
+                    }
                 })
-            } else {
-                // Add a stream entry for each quality option (HD, UHD)
-                // Using url for direct playback in Stremio
-                for (const stream of movieStreams.streams) {
-                    streams.push({
-                        name: `Einthusan | ${movie.language} | ${stream.quality}`,
-                        description: [
-                            `${movie.title} (${movie.year})`,
-                            `Quality: ${stream.quality}`,
-                            stream.movieCode ? `Code: ${stream.movieCode}` : '',
-                            movie.badge ? `[${movie.badge}]` : '',
-                            `Language: ${movie.language}`,
-                            movie.synopsis ? `\n${movie.synopsis}` : ''
-                        ].filter(Boolean).join('\n'),
-                        url: stream.videoUrl,  // Direct playback in Stremio
-                        behaviorHints: {
-                            notWebReady: false
-                        }
-                    })
-                }
             }
         }
     }
