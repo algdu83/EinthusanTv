@@ -1,3 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Einthusan TV</string>
+    <string name="app_name">EinthusanTV</string>
+    <string name="browse_title">EinthusanTV</string>
+    <string name="error_fragment_message">Une erreur est survenue</string>
+    <string name="subtitles_off">Sous-titres desactives</string>
+    <string name="subtitles_french">Francais</string>
+    <string name="subtitles_arabic">Arabe</string>
+    <string name="subtitles_sync_forward">Avancer +0.5s</string>
+    <string name="subtitles_sync_backward">Reculer -0.5s</string>
+    <string name="subtitles_searching">Recherche des sous-titres...</string>
+    <string name="subtitles_not_found">Aucun sous-titre trouve pour cette langue</string>
+    <string name="loading_stream">Chargement du flux video...</string>
+    <string name="stream_error">Impossible de lire ce contenu</string>
 </resources>

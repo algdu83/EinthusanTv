@@ -1,39 +1,84 @@
-# Einthusan TV — Android TV (style Netflix)
+# EinthusanTV — Application Android TV (style Netflix)
 
-Projet Android Studio prêt à compiler. Je n'ai pas pu accéder au dépôt GitHub
-`EinthusanTV` (pas de connexion réseau dans mon environnement), donc ce projet
-est reconstruit from scratch selon tes demandes, avec une architecture propre
-que tu peux adapter à la vraie source de contenu Einthusan.
+Application Android TV (Leanback) inspiree du projet [asaddon/EinthusanTV](https://github.com/asaddon/EinthusanTV)
+(addon Stremio pour Einthusan.tv), avec :
 
-## Compiler l'APK
-1. Ouvre le dossier `EinthusanTV-AndroidTV` dans **Android Studio** (Hedgehog ou plus récent).
-2. Laisse Gradle synchroniser (télécharge les dépendances : Leanback, Media3/ExoPlayer, Retrofit).
-3. `Build > Build Bundle(s) / APK(s) > Build APK(s)`.
-4. Installe sur ta Android TV : `adb install app-debug.apk`.
+- Interface de navigation TV style Netflix (rangees de cartes, fond sombre, accent rouge).
+- Lecteur video plein ecran (Media3 / ExoPlayer) avec overlay de controles.
+- Sous-titres francais et arabe telecharges automatiquement depuis **OpenSubtitles**.
+- Sous-titres en blanc sur fond noir opaque (pas de contour).
+- Boutons pour avancer / reculer le timing des sous-titres par pas de 0,5 s.
 
-## Ce qui est fonctionnel
-- **Interface façon Netflix** : `MainFragment` (Leanback) affiche des rangées
-  horizontales de contenus par catégorie, navigables au D-pad.
-- **Lecteur vidéo** : `PlaybackActivity` utilise ExoPlayer (Media3) pour la lecture.
-- **Sous-titres OpenSubtitles** : `SubtitleManager` cherche et télécharge un `.srt`
-  en français ou arabe via l'API officielle OpenSubtitles, le parse et l'affiche.
-- **Style des sous-titres** : `SubtitleOverlayView` = fond noir semi-opaque + texte blanc.
-- **Avance/recul des sous-titres** : boutons `-0.5s` / `+0.5s` dans l'écran de lecture
-  (touche Menu ou Sous-titres de la télécommande affiche la barre de réglage),
-  décalage appliqué en direct sans re-télécharger le fichier.
-- Bouton `FR/AR` pour basculer de langue de sous-titres à la volée.
+## ⚠️ Important — a lire avant de compiler
 
-## À brancher toi-même (obligatoire avant usage réel)
-1. **Clé API OpenSubtitles** (gratuite) : inscris-toi sur
-   https://www.opensubtitles.com/en/consumers puis colle la clé dans
-   `SubtitleManager.kt` → `SubtitleConfig.API_KEY`.
-2. **Vrai catalogue Einthusan** : `data/MovieRepository.kt` contient des films
-   d'exemple. Remplace son contenu par l'appel réel à la source/API Einthusan
-   (titres, images, URLs de flux `.m3u8`/`.mp4`).
-3. **Images des cartes** : `CardPresenter.kt` ne charge pas encore les images
-   (pour rester léger) — ajoute Glide ou Coil pour charger `movie.cardImageUrl`.
+1. **Le catalogue** : le projet appelle l'addon Stremio public `https://einthusan.asaddon.com/`
+   en suivant le protocole standard des addons Stremio (`/catalog/{type}/{id}.json`,
+   `/stream/{type}/{id}.json`). Verifie `https://einthusan.asaddon.com/manifest.json` pour
+   confirmer le `type` et le `id` exacts du catalogue, et ajuste si besoin
+   `Constants.CATALOG_TYPE` / `Constants.CATALOG_ID` dans
+   `app/src/main/java/com/asaddon/einthusantv/util/Constants.kt`. Si cet addon change
+   d'adresse ou de schema un jour, c'est le seul fichier a modifier.
 
-## Pourquoi pas un APK compilé directement
-Mon environnement d'exécution n'a pas accès à Internet, donc impossible de
-télécharger les dépendances Gradle ni le SDK Android nécessaires à la
-compilation ici. Le code est complet et compile normalement dans Android Studio.
+2. **Cle API OpenSubtitles (obligatoire pour les sous-titres)** : cree un compte gratuit sur
+   https://www.opensubtitles.com/en/consumers puis genere une cle API (Consumer API Key).
+   - En local : copie `local.properties.example` en `local.properties` et renseigne
+     `OPENSUBTITLES_API_KEY=ta_cle` (ce fichier est ignore par git, ta cle ne sera jamais
+     poussee sur GitHub).
+   - Sur GitHub Actions : ajoute un secret de depot nomme `OPENSUBTITLES_API_KEY`
+     (Settings → Secrets and variables → Actions → New repository secret). Le workflow
+     fourni l'utilise automatiquement pour compiler.
+
+3. **Wrapper Gradle** : pour garder ce depot leger, le fichier binaire
+   `gradle/wrapper/gradle-wrapper.jar` n'est pas inclus (seul `gradle-wrapper.properties`
+   est fourni). Deux options :
+   - **Ouvrir le projet dans Android Studio** : il proposera automatiquement de regenerer
+     le wrapper manquant ("Gradle wrapper is missing... create it?").
+   - **En ligne de commande**, si tu as Gradle installe localement : lance `gradle wrapper
+     --gradle-version 8.7` a la racine du projet pour creer `gradlew`, `gradlew.bat` et le
+     jar manquant.
+   - **Sur GitHub Actions**, ce n'est pas necessaire : le workflow fourni installe Gradle
+     lui-meme et compile avec `gradle assembleDebug` directement.
+
+## Compiler
+
+### Sur GitHub (recommande, zero installation)
+
+1. Cree un nouveau depot GitHub et pousse le contenu de ce dossier.
+2. Ajoute le secret `OPENSUBTITLES_API_KEY` (voir ci-dessus).
+3. Le workflow `.github/workflows/android-build.yml` se declenche automatiquement a
+   chaque push sur `main`/`master` (ou manuellement via "Run workflow").
+4. Une fois le build vert, recupere l'APK genere dans l'onglet **Actions → ton run →
+   Artifacts → EinthusanTV-debug-apk**.
+
+### En local avec Android Studio
+
+1. Ouvre le dossier du projet dans Android Studio (Hedgehog ou plus recent recommande).
+2. Laisse-le regenerer le wrapper Gradle si demande.
+3. Cree `local.properties` avec ta cle OpenSubtitles (voir ci-dessus) et le chemin de ton
+   SDK Android.
+4. Lance `Build > Make Project`, puis `Run` sur un emulateur Android TV ou un vrai boitier.
+
+## Structure du projet
+
+```
+app/src/main/java/com/asaddon/einthusantv/
+├── MainActivity.kt            # Ecran d'accueil (hote du fragment Leanback)
+├── MainFragment.kt            # Catalogue (BrowseSupportFragment)
+├── CardPresenter.kt           # Cartes de films (affiches via Glide)
+├── PlaybackActivity.kt        # Lecteur video Media3 + controles sous-titres
+├── EinthusanApp.kt            # Classe Application
+├── model/                     # Modeles de donnees (catalogue Stremio)
+├── network/                   # Client Retrofit (addon Einthusan + OpenSubtitles)
+├── subtitles/                 # Recherche/telechargement OpenSubtitles + decalage SRT
+└── util/Constants.kt          # Configuration (URL addon, catalogue, etc.)
+```
+
+## Limites connues
+
+- Le premier resultat de recherche OpenSubtitles est utilise automatiquement (pas de liste
+  de choix) : tu peux enrichir `SubtitleRepository` si tu veux laisser l'utilisateur choisir
+  parmi plusieurs resultats.
+- L'addon Einthusan doit etre joignable publiquement depuis l'appareil (le manifeste actuel
+  pointe vers `einthusan.asaddon.com`) ; si le proprietaire du depot change ou retire cette
+  instance, remplace `Constants.ADDON_BASE_URL` par la tienne (tu peux deployer le serveur
+  Docker officiel, voir le README original du projet).

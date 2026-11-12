@@ -1,0 +1,4 @@
+# Copie ce fichier en "local.properties" (il est ignore par git) et renseigne ta cle OpenSubtitles.
+# Cle gratuite a obtenir sur https://www.opensubtitles.com/en/consumers
+OPENSUBTITLES_API_KEY=colle_ta_cle_ici
+sdk.dir=/chemin/vers/Android/Sdk
