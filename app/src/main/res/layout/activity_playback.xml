@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:keepScreenOn="true" />
+
+    <com.einthusan.tv.subtitles.SubtitleOverlayView
+        android:id="@+id/subtitle_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="64dp" />
+
+    <!-- Barre de contrôle de synchronisation des sous-titres (visible via bouton télécommande) -->
+    <LinearLayout
+        android:id="@+id/sync_controls"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="32dp"
+        android:background="#CC000000"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btn_sub_back"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏪ -0.5s" />
+
+        <TextView
+            android:id="@+id/txt_offset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="0 ms"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btn_sub_forward"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+0.5s ⏩" />
+
+        <Button
+            android:id="@+id/btn_sub_lang"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:text="FR/AR" />
+    </LinearLayout>
+
+</FrameLayout>
